@@ -1,0 +1,18 @@
+# Virtual environment
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.pyc
+
+# Generated vector database (rebuild via scripts/ingest.py)
+chroma_db/
+
+# Downloaded filings (large, and you can re-download from EDGAR)
+data/*
+!data/.gitkeep
+
+# Editor/OS cruft
+.vscode/
+.DS_Store
