@@ -5,11 +5,13 @@ companies' SEC 10-K filings, and getting answers that cite exactly which
 company and section (Risk Factors, MD&A, Financial Statements, etc.) the
 information came from.
 
-Everything runs locally: filings live in a folder on your machine, and the
-vector database is a local [Chroma](https://www.trychroma.com/) instance —
-no cloud database, no accounts.
+Storage and search run locally: filings live in a folder on your machine,
+and the vector database is a local [Chroma](https://www.trychroma.com/)
+instance — no cloud database. The one outside call is the final answering
+step: the question and the few excerpts retrieved for it are sent to Claude
+via the Anthropic API, which writes the cited answer.
 
-## How it works (the plan)
+## How it works
 
 There are four stages. We're building them in order:
 
@@ -27,13 +29,16 @@ There are four stages. We're building them in order:
 4. **Query** — take a question, find the most relevant chunks, and return an
    answer with citations back to (company, section, filing date).
 
-Steps 1-3 (load, chunk, store) are done. `app/loader.py` parses a filing's
+All four steps are built. `app/loader.py` parses a filing's
 HTML and splits it into the four sections above; `app/chunker.py` breaks each
 section into ~1500-character chunks (with a little overlap between them) sized
 for embedding, while every chunk keeps its company/ticker/fiscal year/section
 tags for citations. `app/vectorstore.py` embeds each chunk with a small local
 model (all-MiniLM-L6-v2, no API key needed) and stores it in Chroma, and can
-search the stored chunks by meaning. Step 4 (`app/query.py`) is next.
+search the stored chunks by meaning. `app/query.py` retrieves the chunks
+closest to a question and has Claude (`claude-opus-5`) answer from only
+those, using the API's built-in citations so every claim links back to the
+exact passage — and company, fiscal year and section — it came from.
 
 ## Project structure
 
@@ -45,7 +50,7 @@ search the stored chunks by meaning. Step 4 (`app/query.py`) is next.
 │   ├── loader.py         # Reads filings, splits into sections
 │   ├── chunker.py        # Splits long sections into embeddable chunks
 │   ├── vectorstore.py    # Wraps chromadb: add chunks, search chunks
-│   └── query.py          # ask(question) -> answer + citations   [NEXT]
+│   └── query.py          # ask(question) -> answer + citations
 ├── scripts/
 │   ├── ingest.py         # CLI: build the vector database from data/
 │   └── ask.py            # CLI: ask a question from the command line
@@ -53,11 +58,6 @@ search the stored chunks by meaning. Step 4 (`app/query.py`) is next.
 │                         # (not checked into git; rebuild anytime)
 └── requirements.txt
 ```
-
-`loader.py`, `chunker.py` and `vectorstore.py` are implemented; `query.py`
-and the scripts are still stubs with docstrings describing what they'll do —
-this keeps the shape of the project visible from day one, even before the
-logic exists.
 
 ## Setting up the `data/` folder
 
@@ -105,24 +105,42 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-## Running it (once built)
+### Anthropic API key
+
+Answering questions needs an API key from the
+[Claude Console](https://console.anthropic.com/settings/keys) (Settings →
+API Keys). Each question costs on the order of a cent. Set it in the
+terminal before running `ask.py`:
+
+```powershell
+$env:ANTHROPIC_API_KEY = "sk-ant-..."   # this terminal session only
+```
+
+To make it permanent, run
+`[Environment]::SetEnvironmentVariable("ANTHROPIC_API_KEY", "sk-ant-...", "User")`
+once and open a new terminal. Never put the key in a file inside this
+project — it could end up committed to git.
+
+## Running it
 
 ```powershell
 # 1. Put your downloaded 10-K filings in data/ (see layout above)
 
-# 2. Build the vector database
+# 2. Build the vector database (re-run whenever data/ changes)
 python scripts/ingest.py
 
 # 3. Ask a question
-python scripts/ask.py "What supply chain risks did Apple report in 2023?"
+python scripts/ask.py "What supply chain risks does Vertiv report?"
 ```
 
-A simple command-line function is the first target — no UI yet. Once that
-works reliably, a UI can be layered on top without changing anything
-underneath.
+The answer marks each claim with `[n]`, and below it lists each source's
+company, fiscal year and section along with the exact passage quoted.
 
-**Sanity-checking the pieces built so far:** since `ingest.py` isn't built
-yet, you can run each module directly:
+A command-line tool is the first target — no UI yet. A UI can be layered
+on top of `app.query.ask()` later without changing anything underneath.
+
+**Sanity-checking individual pieces:** each module can also be run
+directly:
 
 ```powershell
 .venv\Scripts\python -m app.loader       # one line per section found
@@ -139,5 +157,5 @@ The first `app.vectorstore` run downloads the ~80 MB embedding model to
 - [x] `loader.py` — parse filings from `data/`, split into sections
 - [x] `chunker.py` — split long sections into embeddable chunks
 - [x] `vectorstore.py` — Chroma collection setup, add/search
-- [ ] `query.py` + `scripts/ask.py` — working command-line Q&A with citations
+- [x] `query.py` + `scripts/ask.py` — working command-line Q&A with citations
 - [ ] (later) a simple UI on top of the same `query.py` function
