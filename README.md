@@ -27,11 +27,13 @@ There are four stages. We're building them in order:
 4. **Query** — take a question, find the most relevant chunks, and return an
    answer with citations back to (company, section, filing date).
 
-Steps 1-2 (load, chunk) are done. `app/loader.py` parses a filing's HTML and
-splits it into the four sections above; `app/chunker.py` breaks each section
-into ~1500-character chunks (with a little overlap between them) sized for
-embedding, while every chunk keeps its company/ticker/fiscal year/section
-tags for citations. Step 3 (`app/vectorstore.py`) is next.
+Steps 1-3 (load, chunk, store) are done. `app/loader.py` parses a filing's
+HTML and splits it into the four sections above; `app/chunker.py` breaks each
+section into ~1500-character chunks (with a little overlap between them) sized
+for embedding, while every chunk keeps its company/ticker/fiscal year/section
+tags for citations. `app/vectorstore.py` embeds each chunk with a small local
+model (all-MiniLM-L6-v2, no API key needed) and stores it in Chroma, and can
+search the stored chunks by meaning. Step 4 (`app/query.py`) is next.
 
 ## Project structure
 
@@ -41,9 +43,9 @@ tags for citations. Step 3 (`app/vectorstore.py`) is next.
 ├── app/                  # The actual library code
 │   ├── config.py         # Paths and constants shared by everything else
 │   ├── loader.py         # Reads filings, splits into sections
-│   ├── chunker.py         # Splits long sections into embeddable chunks   [NEXT]
+│   ├── chunker.py        # Splits long sections into embeddable chunks
 │   ├── vectorstore.py    # Wraps chromadb: add chunks, search chunks
-│   └── query.py          # ask(question) -> answer + citations
+│   └── query.py          # ask(question) -> answer + citations   [NEXT]
 ├── scripts/
 │   ├── ingest.py         # CLI: build the vector database from data/
 │   └── ask.py            # CLI: ask a question from the command line
@@ -52,8 +54,8 @@ tags for citations. Step 3 (`app/vectorstore.py`) is next.
 └── requirements.txt
 ```
 
-`loader.py` and `chunker.py` are implemented; `vectorstore.py` and
-`query.py` are still stubs with docstrings describing what they'll do —
+`loader.py`, `chunker.py` and `vectorstore.py` are implemented; `query.py`
+and the scripts are still stubs with docstrings describing what they'll do —
 this keeps the shape of the project visible from day one, even before the
 logic exists.
 
@@ -86,13 +88,14 @@ will expect to parse first.
 
 You'll need Python and a virtual environment.
 
-> **Note:** This machine has Python 3.14, which is very new. `chromadb` has
-> some compiled dependencies, and brand-new Python versions don't always
-> have pre-built wheels available immediately. If `pip install` fails on
-> `chromadb`, the fix is to install
-> [Python 3.12](https://www.python.org/downloads/) alongside 3.14 and create
-> the virtual environment with that instead — we'll deal with this together
-> if it comes up.
+> **Windows note:** Chroma's embedding model runs on `onnxruntime`, which
+> needs a recent Microsoft Visual C++ runtime. If Python exits silently (or
+> with "access violation") as soon as anything is embedded, install the
+> latest
+> [Visual C++ Redistributable (x64)](https://aka.ms/vs/17/release/vc_redist.x64.exe)
+> and try again. You can check with
+> `.venv\Scripts\python -c "import onnxruntime"` — it should print nothing
+> and not crash.
 
 ```powershell
 # From the project folder:
@@ -118,19 +121,23 @@ A simple command-line function is the first target — no UI yet. Once that
 works reliably, a UI can be layered on top without changing anything
 underneath.
 
-**Sanity-checking the loader and chunker right now:** since `ingest.py`
-isn't built yet, you can check these two pieces directly:
+**Sanity-checking the pieces built so far:** since `ingest.py` isn't built
+yet, you can run each module directly:
 
 ```powershell
-.venv\Scripts\python -m app.loader    # one line per section found
-.venv\Scripts\python -m app.chunker   # chunk counts/sizes per section
+.venv\Scripts\python -m app.loader       # one line per section found
+.venv\Scripts\python -m app.chunker      # chunk counts/sizes per section
+.venv\Scripts\python -m app.vectorstore  # rebuild chroma_db/, run test searches
 ```
+
+The first `app.vectorstore` run downloads the ~80 MB embedding model to
+`~/.cache/chroma`; after that it runs offline.
 
 ## Roadmap
 
 - [x] Project structure + README
 - [x] `loader.py` — parse filings from `data/`, split into sections
 - [x] `chunker.py` — split long sections into embeddable chunks
-- [ ] `vectorstore.py` — Chroma collection setup, add/search
+- [x] `vectorstore.py` — Chroma collection setup, add/search
 - [ ] `query.py` + `scripts/ask.py` — working command-line Q&A with citations
 - [ ] (later) a simple UI on top of the same `query.py` function
