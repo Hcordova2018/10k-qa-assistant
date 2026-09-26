@@ -108,6 +108,12 @@ def add_chunks(chunks):
     return collection.count()
 
 
+def list_companies():
+    """Return (ticker, company) pairs for every filing in the collection."""
+    metadatas = get_collection().get(include=["metadatas"])["metadatas"]
+    return sorted({(m["ticker"], m["company"]) for m in metadatas})
+
+
 def search(query_text: str, n_results: int = 5, where: dict | None = None):
     """
     Return the n_results chunks whose meaning is closest to query_text.
