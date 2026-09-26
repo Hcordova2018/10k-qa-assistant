@@ -1,3 +1,4 @@
 chromadb
 beautifulsoup4
 anthropic
+streamlit
