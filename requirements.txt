@@ -1,4 +1,4 @@
-chromadb
-beautifulsoup4
-anthropic
-streamlit
+chromadb==1.5.9
+beautifulsoup4==4.15.0
+anthropic==1.8.0
+streamlit==1.64.0
